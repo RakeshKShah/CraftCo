@@ -28,7 +28,7 @@ postcss.config.js
 
 # Prisma
 /prisma/dev.db
-/prisma/migrations/
+# Note: /prisma/migrations/ intentionally NOT ignored — migrations must be in build context for prisma migrate deploy
 **/schema.prisma.lock
 *.db
 *.sqlite
