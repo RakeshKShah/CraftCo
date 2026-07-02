@@ -22,7 +22,7 @@ trap cleanup EXIT
 # Given
 psql "$DATABASE_URL" -c "INSERT INTO users (id, email, password_hash, role, status) VALUES ('${USER_ID}', '${EMAIL}', 'hash', 'SELLER', 'SUSPENDED');"
 psql "$DATABASE_URL" -c "INSERT INTO seller_profiles (id, user_id, store_name, bio) VALUES ('${SELLER_ID}', '${USER_ID}', 'Suspended Store ${CASE_SUFFIX}', 'Suspended bio ${CASE_SUFFIX}');"
-psql "$DATABASE_URL" -c "INSERT INTO products (id, seller_id, title, description, category, price_cents, stock_qty, photos, status, visible) VALUES ('${PRODUCT_ID}', '${SELLER_ID}', 'Suspended Original', 'Suspended description', 'FASHION', 2200, 3, '[\"https://example.com/suspended.jpg\"]', 'ACTIVE', false);"
+psql "$DATABASE_URL" -c "INSERT INTO products (id, seller_id, title, description, category, price_cents, stock_qty, photos, status, visible) VALUES ('${PRODUCT_ID}', '${SELLER_ID}', 'Original Suspended Title', 'Suspended description', 'ELECTRONICS', 2200, 3, '[]'::jsonb, 'ACTIVE', false);"
 node -e 'const jwt=require("jsonwebtoken"); process.stdout.write(jwt.sign({id:process.argv[1],email:process.argv[2],role:"SELLER",status:"SUSPENDED"}, process.env.JWT_SECRET));' "$USER_ID" "$EMAIL" > "$TOKEN_FILE"
 TOKEN="$(cat "$TOKEN_FILE")"
 
@@ -31,14 +31,14 @@ curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' \
   -X PUT "$BASE_URL/products/${PRODUCT_ID}" \
   -H "Authorization: Bearer ${TOKEN}" \
   -H 'Content-Type: application/json' \
-  --data '{"title":"Suspended Attempt"}' > "$STATUS_FILE"
+  --data '{"title":"Should Fail"}' > "$STATUS_FILE"
 
 # Then
 STATUS="$(cat "$STATUS_FILE")"
 [ "$STATUS" = "403" ]
 grep -F '"error":"Seller account must be active"' "$RESPONSE_FILE" >/dev/null
 DB_TITLE="$(psql "$DATABASE_URL" -t -A -c "SELECT title FROM products WHERE id='${PRODUCT_ID}';")"
-[ "$DB_TITLE" = 'Suspended Original' ]
+[ "$DB_TITLE" = 'Original Suspended Title' ]
 echo "CODEVALID_TEST_ASSERTION_OK:suspended_seller_cannot_update_product"
 
 # Cleanup

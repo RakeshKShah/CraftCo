@@ -4,7 +4,7 @@ BASE_URL="${BASE_URL:-http://app:6713}"
 DATABASE_URL="${DATABASE_URL:-postgresql://app:app@toxiproxy:5432/appdb}"
 JWT_SECRET="${JWT_SECRET:-dev-secret}"
 CASE_SUFFIX="$(date +%s)-$$"
-TEST_ID="non_seller_role_forbidden"
+TEST_ID="seller_without_profile_not_found"
 USER_ID="user_${TEST_ID}_${CASE_SUFFIX}"
 USER_EMAIL="${TEST_ID}-${CASE_SUFFIX}@example.com"
 TOKEN_FILE="/tmp/${TEST_ID}_${CASE_SUFFIX}.token"
@@ -19,8 +19,8 @@ cleanup_db() {
 trap 'cleanup_files; cleanup_db' EXIT
 
 # Given
-psql "$DATABASE_URL" -c "INSERT INTO users (id, email, password_hash, role, status) VALUES ('${USER_ID}', '${USER_EMAIL}', 'hash', 'BUYER', 'ACTIVE');" >/dev/null
-node -e 'const jwt=require("jsonwebtoken"); process.stdout.write(jwt.sign({id:process.argv[1],email:process.argv[2],role:"BUYER",status:"ACTIVE"}, process.env.JWT_SECRET));' "$USER_ID" "$USER_EMAIL" > "$TOKEN_FILE"
+psql "$DATABASE_URL" -c "INSERT INTO users (id, email, password_hash, role, status) VALUES ('${USER_ID}', '${USER_EMAIL}', 'hash', 'SELLER', 'ACTIVE');" >/dev/null
+node -e 'const jwt=require("jsonwebtoken"); process.stdout.write(jwt.sign({id:process.argv[1],email:process.argv[2],role:"SELLER",status:"ACTIVE"}, process.env.JWT_SECRET));' "$USER_ID" "$USER_EMAIL" > "$TOKEN_FILE"
 TOKEN="$(cat "$TOKEN_FILE")"
 
 # When
@@ -30,10 +30,10 @@ curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' \
 
 # Then
 STATUS="$(cat "$STATUS_FILE")"
-[ "$STATUS" = "403" ]
-grep -F '"error":"Seller access required"' "$RESPONSE_FILE" >/dev/null
+[ "$STATUS" = "404" ]
+grep -F '"error":"Seller profile not found"' "$RESPONSE_FILE" >/dev/null
 
-echo "CODEVALID_TEST_ASSERTION_OK:non_seller_role_forbidden"
+echo "CODEVALID_TEST_ASSERTION_OK:seller_without_profile_not_found"
 
 # Cleanup
 psql "$DATABASE_URL" -c "DELETE FROM users WHERE id='${USER_ID}';" >/dev/null 2>&1 || true

@@ -22,7 +22,7 @@ trap cleanup EXIT
 # Given
 psql "$DATABASE_URL" -c "INSERT INTO users (id, email, password_hash, role, status) VALUES ('${USER_ID}', '${EMAIL}', 'hash', 'SELLER', 'ACTIVE');"
 psql "$DATABASE_URL" -c "INSERT INTO seller_profiles (id, user_id, store_name, bio) VALUES ('${SELLER_ID}', '${USER_ID}', 'Active Store ${CASE_SUFFIX}', 'Active bio ${CASE_SUFFIX}');"
-psql "$DATABASE_URL" -c "INSERT INTO products (id, seller_id, title, description, category, price_cents, stock_qty, photos, status, visible) VALUES ('${PRODUCT_ID}', '${SELLER_ID}', 'Original Title', 'Original description', 'HOME_GOODS', 1999, 8, '[\"https://example.com/original.jpg\"]', 'ACTIVE', true);"
+psql "$DATABASE_URL" -c "INSERT INTO products (id, seller_id, title, description, category, price_cents, stock_qty, photos, status, visible) VALUES ('${PRODUCT_ID}', '${SELLER_ID}', 'Old Title', 'Old desc', 'ELECTRONICS', 1000, 5, '[]'::jsonb, 'ACTIVE', true);"
 node -e 'const jwt=require("jsonwebtoken"); process.stdout.write(jwt.sign({id:process.argv[1],email:process.argv[2],role:"SELLER",status:"ACTIVE"}, process.env.JWT_SECRET));' "$USER_ID" "$EMAIL" > "$TOKEN_FILE"
 TOKEN="$(cat "$TOKEN_FILE")"
 
@@ -31,19 +31,19 @@ curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' \
   -X PUT "$BASE_URL/products/${PRODUCT_ID}" \
   -H "Authorization: Bearer ${TOKEN}" \
   -H 'Content-Type: application/json' \
-  --data '{"title":"Updated Title","description":"New description","price_cents":2999}' > "$STATUS_FILE"
+  --data '{"title":"New Title","price_cents":1500,"stock_qty":10}' > "$STATUS_FILE"
 
 # Then
 STATUS="$(cat "$STATUS_FILE")"
 [ "$STATUS" = "200" ]
 grep -F '"id":"'"$PRODUCT_ID"'"' "$RESPONSE_FILE" >/dev/null
-grep -F '"title":"Updated Title"' "$RESPONSE_FILE" >/dev/null
-grep -F '"description":"New description"' "$RESPONSE_FILE" >/dev/null
-grep -F '"priceCents":2999' "$RESPONSE_FILE" >/dev/null
-grep -F '"stockQty":8' "$RESPONSE_FILE" >/dev/null
-grep -F '"status":"ACTIVE"' "$RESPONSE_FILE" >/dev/null
-DB_ROW="$(psql "$DATABASE_URL" -t -A -c "SELECT title || '|' || description || '|' || price_cents::text FROM products WHERE id='${PRODUCT_ID}' AND seller_id='${SELLER_ID}';")"
-[ "$DB_ROW" = 'Updated Title|New description|2999' ]
+grep -F '"title":"New Title"' "$RESPONSE_FILE" >/dev/null
+grep -F '"description":"Old desc"' "$RESPONSE_FILE" >/dev/null
+grep -F '"category":"ELECTRONICS"' "$RESPONSE_FILE" >/dev/null
+grep -F '"priceCents":1500' "$RESPONSE_FILE" >/dev/null
+grep -F '"stockQty":10' "$RESPONSE_FILE" >/dev/null
+DB_ROW="$(psql "$DATABASE_URL" -t -A -c "SELECT title || '|' || description || '|' || category || '|' || price_cents::text || '|' || stock_qty::text FROM products WHERE id='${PRODUCT_ID}' AND seller_id='${SELLER_ID}';")"
+[ "$DB_ROW" = 'New Title|Old desc|ELECTRONICS|1500|10' ]
 echo "CODEVALID_TEST_ASSERTION_OK:active_seller_updates_product_successfully"
 
 # Cleanup

@@ -2,8 +2,7 @@
 set -eu
 BASE_URL="${BASE_URL:-http://app:6713}"
 CASE_SUFFIX="$(date +%s)-$$"
-TEST_ID="invalid_token_rejected"
-INVALID_TOKEN="invalid.jwt.token"
+TEST_ID="unauthenticated_request_rejected"
 RESPONSE_FILE="/tmp/${TEST_ID}_${CASE_SUFFIX}.json"
 STATUS_FILE="/tmp/${TEST_ID}_${CASE_SUFFIX}.status"
 cleanup_files() {
@@ -12,16 +11,15 @@ cleanup_files() {
 trap cleanup_files EXIT
 
 # Given
-: "Malformed bearer token is used"
+: "No Authorization header is sent"
 
 # When
 curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' \
-  -X GET "$BASE_URL/seller/dashboard" \
-  -H "Authorization: Bearer ${INVALID_TOKEN}" > "$STATUS_FILE"
+  -X GET "$BASE_URL/seller/dashboard" > "$STATUS_FILE"
 
 # Then
 STATUS="$(cat "$STATUS_FILE")"
 [ "$STATUS" = "401" ]
-grep -F '"error":"Invalid token"' "$RESPONSE_FILE" >/dev/null
+grep -F '"error":"Unauthorized"' "$RESPONSE_FILE" >/dev/null
 
-echo "CODEVALID_TEST_ASSERTION_OK:invalid_token_rejected"
+echo "CODEVALID_TEST_ASSERTION_OK:unauthenticated_request_rejected"

@@ -48,10 +48,13 @@ curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' -H "Authorization: Bearer $ADMIN_
 
 # Then
 [ "$(cat "$STATUS_FILE")" = "200" ]
-grep -F '"id":"'"$PROD_ACTIVE_ID"'"' "$RESPONSE_FILE" >/dev/null
-grep -F '"id":"'"$PROD_HIDDEN_ID"'"' "$RESPONSE_FILE" >/dev/null
-grep -F '"id":"'"$PROD_SUSP_ID"'"' "$RESPONSE_FILE" >/dev/null
-! grep -F '"id":"'"$PROD_REMOVED_ID"'"' "$RESPONSE_FILE" >/dev/null
+jq -e 'type == "array"' "$RESPONSE_FILE" >/dev/null
+jq -e 'length == 3' "$RESPONSE_FILE" >/dev/null
+jq -e 'map(select(.id == "'"$PROD_ACTIVE_ID"'")) | length == 1' "$RESPONSE_FILE" >/dev/null
+jq -e 'map(select(.id == "'"$PROD_HIDDEN_ID"'")) | length == 1' "$RESPONSE_FILE" >/dev/null
+jq -e 'map(select(.id == "'"$PROD_SUSP_ID"'")) | length == 1' "$RESPONSE_FILE" >/dev/null
+jq -e 'map(select(.id == "'"$PROD_REMOVED_ID"'")) | length == 0' "$RESPONSE_FILE" >/dev/null
+jq -e 'all(.[]; .seller != null)' "$RESPONSE_FILE" >/dev/null
 
 echo "CODEVALID_TEST_ASSERTION_OK:admin_views_all_products_including_hidden"
 
