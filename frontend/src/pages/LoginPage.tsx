@@ -36,7 +36,7 @@ export function LoginPage() {
     <div className="mx-auto max-w-md px-4 py-16">
       <h1 className="text-center font-serif text-3xl">{mode === "login" ? "Sign in" : "Join Craft & Co."}</h1>
       <div className="mt-6 flex gap-2 rounded-lg bg-stone-100 p-1">
-        <button type="button" onClick={() => setMode("login")} className={`flex-1 rounded-md py-2 text-sm ${mode === "login" ? "bg-white shadow" : ""}`}>Sign in</button>
+        <button type="button" onClick={() => setMode("login")} className={`flex-1 rounded-md py-2 text-sm ${mode === "login" ? "bg-white shadow" : ""}`}>Log in</button>
         <button type="button" onClick={() => setMode("register")} className={`flex-1 rounded-md py-2 text-sm ${mode === "register" ? "bg-white shadow" : ""}`}>Register</button>
       </div>
       <form onSubmit={handleSubmit} className="mt-8 space-y-4">
