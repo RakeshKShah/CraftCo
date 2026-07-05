@@ -1,0 +1,58 @@
+#!/usr/bin/env sh
+set -eu
+BASE_URL="${BASE_URL:-http://app:6713}"
+DATABASE_URL="${DATABASE_URL:-postgresql://app:app@toxiproxy:5432/appdb}"
+JWT_SECRET="${JWT_SECRET:-dev-secret}"
+CASE_SUFFIX="$(date +%s)-$$"
+USER_ID="user-noseller-2-${CASE_SUFFIX}"
+OWNER_USER_ID="user-owner-2-${CASE_SUFFIX}"
+OWNER_SELLER_ID="seller-owner-2-${CASE_SUFFIX}"
+PRODUCT_ID="prod-any-2-${CASE_SUFFIX}"
+USER_EMAIL="noseller-${CASE_SUFFIX}@example.com"
+OWNER_EMAIL="owner-${CASE_SUFFIX}@example.com"
+RESPONSE_FILE="/tmp/delete_product_without_seller_profile_${CASE_SUFFIX}.json"
+STATUS_FILE="/tmp/delete_product_without_seller_profile_${CASE_SUFFIX}.status"
+
+cleanup_files() {
+  rm -f "$RESPONSE_FILE" "$STATUS_FILE"
+}
+
+create_jwt() {
+  payload="$1"
+  header_b64="$(printf '%s' '{"alg":"HS256","typ":"JWT"}' | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
+  payload_b64="$(printf '%s' "$payload" | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
+  signature_b64="$(printf '%s' "${header_b64}.${payload_b64}" | openssl dgst -sha256 -hmac "$JWT_SECRET" -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
+  printf '%s' "${header_b64}.${payload_b64}.${signature_b64}"
+}
+
+cleanup_db() {
+  psql "$DATABASE_URL" -c "DELETE FROM products WHERE id = '${PRODUCT_ID}'; DELETE FROM seller_profiles WHERE id = '${OWNER_SELLER_ID}'; DELETE FROM users WHERE id IN ('${USER_ID}', '${OWNER_USER_ID}');" >/dev/null
+}
+
+trap 'cleanup_files; cleanup_db' EXIT
+
+# Given
+psql "$DATABASE_URL" <<SQL >/dev/null
+INSERT INTO users (id, email, password_hash, role, status) VALUES ('${USER_ID}', '${USER_EMAIL}', 'hash', 'SELLER', 'ACTIVE');
+INSERT INTO users (id, email, password_hash, role, status) VALUES ('${OWNER_USER_ID}', '${OWNER_EMAIL}', 'hash', 'SELLER', 'ACTIVE');
+INSERT INTO seller_profiles (id, user_id, store_name, bio) VALUES ('${OWNER_SELLER_ID}', '${OWNER_USER_ID}', 'Owner Store ${CASE_SUFFIX}', 'bio');
+INSERT INTO products (id, seller_id, title, description, category, price_cents, stock_qty, photos, status, visible)
+VALUES ('${PRODUCT_ID}', '${OWNER_SELLER_ID}', 'Any Product ${CASE_SUFFIX}', 'desc', 'crafts', 1000, 3, '[]'::jsonb, 'ACTIVE', true);
+SQL
+TOKEN="$(create_jwt "{\"id\":\"${USER_ID}\",\"email\":\"${USER_EMAIL}\",\"role\":\"SELLER\",\"status\":\"ACTIVE\"}")"
+
+# When
+curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' -X DELETE \
+  "$BASE_URL/products/${PRODUCT_ID}" \
+  -H "Authorization: Bearer ${TOKEN}" > "$STATUS_FILE"
+
+# Then
+STATUS="$(cat "$STATUS_FILE")"
+[ "$STATUS" = "404" ]
+grep -F '"error":"Seller profile not found"' "$RESPONSE_FILE" >/dev/null
+DB_ROW="$(psql "$DATABASE_URL" -At -c "SELECT status || '|' || visible::text FROM products WHERE id = '${PRODUCT_ID}';")"
+[ "$DB_ROW" = "ACTIVE|true" ]
+echo "CODEVALID_TEST_ASSERTION_OK:delete_product_without_seller_profile"
+
+# Cleanup
+cleanup_db

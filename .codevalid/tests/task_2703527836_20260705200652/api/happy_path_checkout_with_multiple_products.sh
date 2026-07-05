@@ -1,0 +1,70 @@
+#!/usr/bin/env sh
+set -eu
+BASE_URL="${BASE_URL:-http://app:6713}"
+DATABASE_URL="${DATABASE_URL:-postgresql://app:app@toxiproxy:5432/appdb}"
+CASE_SUFFIX="$(date +%s)-$$"
+BUYER_ID="buyer-happy-${CASE_SUFFIX}"
+SELLER_USER_1_ID="seller-user-1-${CASE_SUFFIX}"
+SELLER_PROFILE_1_ID="seller-profile-1-${CASE_SUFFIX}"
+SELLER_USER_2_ID="seller-user-2-${CASE_SUFFIX}"
+SELLER_PROFILE_2_ID="seller-profile-2-${CASE_SUFFIX}"
+PROD_1_ID="prod-101-${CASE_SUFFIX}"
+PROD_2_ID="prod-102-${CASE_SUFFIX}"
+RESPONSE_FILE="/tmp/happy_path_checkout_with_multiple_products_${CASE_SUFFIX}.json"
+STATUS_FILE="/tmp/happy_path_checkout_with_multiple_products_${CASE_SUFFIX}.status"
+cleanup_files() { rm -f "$RESPONSE_FILE" "$STATUS_FILE"; }
+trap cleanup_files EXIT
+ORDER_ID=""
+
+# Given
+BUYER_TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({id: process.argv[1], email: 'buyer+'+process.argv[1]+'@example.com', role: 'BUYER', status: 'ACTIVE'}, 'dev-secret', {expiresIn:'7d'}));" "$BUYER_ID")"
+psql "$DATABASE_URL" <<SQL
+INSERT INTO "User" (id, email, password, role, status, "createdAt") VALUES
+  ('${BUYER_ID}', 'buyer+${CASE_SUFFIX}@example.com', 'pw', 'BUYER', 'ACTIVE', NOW()),
+  ('${SELLER_USER_1_ID}', 'seller1+${CASE_SUFFIX}@example.com', 'pw', 'SELLER', 'ACTIVE', NOW()),
+  ('${SELLER_USER_2_ID}', 'seller2+${CASE_SUFFIX}@example.com', 'pw', 'SELLER', 'ACTIVE', NOW());
+INSERT INTO "SellerProfile" (id, "userId", "storeName", bio, status, "createdAt") VALUES
+  ('${SELLER_PROFILE_1_ID}', '${SELLER_USER_1_ID}', 'Store One ${CASE_SUFFIX}', 'bio', 'ACTIVE', NOW()),
+  ('${SELLER_PROFILE_2_ID}', '${SELLER_USER_2_ID}', 'Store Two ${CASE_SUFFIX}', 'bio', 'ACTIVE', NOW());
+INSERT INTO "Product" (id, title, description, price_cents, stock_qty, visible, status, "sellerId", category, "createdAt") VALUES
+  ('${PROD_1_ID}', 'Product 101 ${CASE_SUFFIX}', 'desc', 1000, 10, true, 'ACTIVE', '${SELLER_PROFILE_1_ID}', 'general', NOW()),
+  ('${PROD_2_ID}', 'Product 102 ${CASE_SUFFIX}', 'desc', 5000, 5, true, 'ACTIVE', '${SELLER_PROFILE_2_ID}', 'general', NOW());
+SQL
+
+# When
+curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' \
+  -X POST "$BASE_URL/orders/checkout" \
+  -H "Authorization: Bearer ${BUYER_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  --data "{\"items\":[{\"product_id\":\"${PROD_1_ID}\",\"qty\":2},{\"product_id\":\"${PROD_2_ID}\",\"qty\":1}]}" > "$STATUS_FILE"
+
+# Then
+STATUS="$(cat "$STATUS_FILE")"
+[ "$STATUS" = "200" ]
+grep -F '"message":"Order placed"' "$RESPONSE_FILE" >/dev/null
+ORDER_ID="$(sed -n 's/.*"order_id":"\([^"]*\)".*/\1/p' "$RESPONSE_FILE")"
+[ -n "$ORDER_ID" ]
+ORDER_CHECK="$(psql "$DATABASE_URL" -At -F '|' -c "SELECT total_cents, platform_fee_cents, status FROM \"Order\" WHERE id = '${ORDER_ID}';")"
+[ "$ORDER_CHECK" = '7000|700|PAID' ]
+ITEM_CHECK_1="$(psql "$DATABASE_URL" -At -F '|' -c "SELECT seller_payout_cents, qty, price_at_purchase FROM \"OrderItem\" WHERE \"orderId\" = '${ORDER_ID}' AND \"productId\" = '${PROD_1_ID}';")"
+[ "$ITEM_CHECK_1" = '1800|2|1000' ]
+ITEM_CHECK_2="$(psql "$DATABASE_URL" -At -F '|' -c "SELECT seller_payout_cents, qty, price_at_purchase FROM \"OrderItem\" WHERE \"orderId\" = '${ORDER_ID}' AND \"productId\" = '${PROD_2_ID}';")"
+[ "$ITEM_CHECK_2" = '4500|1|5000' ]
+STOCK_1="$(psql "$DATABASE_URL" -At -c "SELECT stock_qty FROM \"Product\" WHERE id = '${PROD_1_ID}';")"
+[ "$STOCK_1" = '8' ]
+STOCK_2="$(psql "$DATABASE_URL" -At -c "SELECT stock_qty FROM \"Product\" WHERE id = '${PROD_2_ID}';")"
+[ "$STOCK_2" = '4' ]
+echo 'CODEVALID_TEST_ASSERTION_OK:happy_path_checkout_with_multiple_products'
+
+# Cleanup
+if [ -n "$ORDER_ID" ]; then
+psql "$DATABASE_URL" <<SQL
+DELETE FROM "OrderItem" WHERE "orderId" = '${ORDER_ID}';
+DELETE FROM "Order" WHERE id = '${ORDER_ID}';
+SQL
+fi
+psql "$DATABASE_URL" <<SQL
+DELETE FROM "Product" WHERE id IN ('${PROD_1_ID}', '${PROD_2_ID}');
+DELETE FROM "SellerProfile" WHERE id IN ('${SELLER_PROFILE_1_ID}', '${SELLER_PROFILE_2_ID}');
+DELETE FROM "User" WHERE id IN ('${BUYER_ID}', '${SELLER_USER_1_ID}', '${SELLER_USER_2_ID}');
+SQL

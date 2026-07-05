@@ -1,0 +1,31 @@
+#!/usr/bin/env sh
+set -eu
+BASE_URL="${BASE_URL:-http://app:6713}"
+DATABASE_URL="${DATABASE_URL:-postgresql://app:app@toxiproxy:5432/appdb}"
+CASE_SUFFIX="$(date +%s)-$$"
+BUYER_ID="buyer-empty-${CASE_SUFFIX}"
+RESPONSE_FILE="/tmp/empty_items_array_validation_${CASE_SUFFIX}.json"
+STATUS_FILE="/tmp/empty_items_array_validation_${CASE_SUFFIX}.status"
+trap 'rm -f "$RESPONSE_FILE" "$STATUS_FILE"' EXIT
+
+# Given
+BUYER_TOKEN="$(node -e "const jwt=require('jsonwebtoken'); process.stdout.write(jwt.sign({id: process.argv[1], email: 'buyer+'+process.argv[1]+'@example.com', role: 'BUYER', status: 'ACTIVE'}, 'dev-secret', {expiresIn:'7d'}));" "$BUYER_ID")"
+psql "$DATABASE_URL" -c "INSERT INTO \"User\" (id, email, password, role, status, \"createdAt\") VALUES ('${BUYER_ID}', 'buyer+${CASE_SUFFIX}@example.com', 'pw', 'BUYER', 'ACTIVE', NOW());"
+
+# When
+curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' \
+  -X POST "$BASE_URL/orders/checkout" \
+  -H "Authorization: Bearer ${BUYER_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  --data '{"items":[]}' > "$STATUS_FILE"
+
+# Then
+STATUS="$(cat "$STATUS_FILE")"
+[ "$STATUS" = "400" ]
+grep -E 'at least 1|Too small|Array must contain at least 1' "$RESPONSE_FILE" >/dev/null
+ORDER_COUNT="$(psql "$DATABASE_URL" -At -c "SELECT COUNT(*) FROM \"Order\" WHERE \"buyerId\" = '${BUYER_ID}';")"
+[ "$ORDER_COUNT" = '0' ]
+echo 'CODEVALID_TEST_ASSERTION_OK:empty_items_array_validation'
+
+# Cleanup
+psql "$DATABASE_URL" -c "DELETE FROM \"User\" WHERE id = '${BUYER_ID}';"
