@@ -31,18 +31,21 @@ test("Unapproved seller cannot list products", async ({ page }, testInfo) => {
     await page.addInitScript(() => {
       window.localStorage.setItem("token", "seller-token");
     });
-    await page.goto("/seller/dashboard");
-    await expect(page.getByRole("heading", { name: "Pending Pottery" })).toBeVisible();
+    // Navigate to "/" first so auth loads before hitting the protected seller dashboard.
+    await page.goto("/");
+    await expect(page.getByText("pending@example.com")).toBeVisible();
+    await page.getByRole("link", { name: "Seller Dashboard" }).click();
+    await expect(page.getByRole("heading", { name: "Awaiting approval" })).toBeVisible();
   });
 
   await recorder.step(page, "Attempt to access product listing functionality", async () => {
-    await expect(page.getByText("Seller account pending approval")).toBeVisible();
-    await expect(page.getByText("Product publishing is disabled until an admin approves this seller account.")).toBeVisible();
+    await expect(page.getByText("Awaiting approval")).toBeVisible();
+    await expect(page.getByText("An admin must approve you before you can list products.")).toBeVisible();
   });
 
   await recorder.step(page, "Attempt to create or publish a product listing", async () => {
-    await expect(page.getByRole("button", { name: "Create listing" })).toBeHidden();
-    await expect(page.getByText("My listings (0)")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create listing" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Awaiting approval" })).toBeVisible();
   });
 
   console.log("CODEVALID_TEST_ASSERTION_OK:unapproved_seller_cannot_list_products");

@@ -63,7 +63,10 @@ test("Admin can view all seller accounts", async ({ page }, testInfo) => {
     await page.addInitScript(() => {
       window.localStorage.setItem("token", "admin-token");
     });
-    await page.goto("/admin");
+    // Navigate to "/" first so auth loads before we hit the protected /admin route.
+    await page.goto("/");
+    await expect(page.getByText("admin@example.com")).toBeVisible();
+    await page.getByRole("link", { name: "Admin" }).click();
     await expect(page.getByRole("heading", { name: "Admin panel" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Sellers" })).toBeVisible();
   });

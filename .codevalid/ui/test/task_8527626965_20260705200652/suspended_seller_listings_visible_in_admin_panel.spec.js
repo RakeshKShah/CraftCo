@@ -45,7 +45,10 @@ test("Suspended seller listings remain visible in admin panel", async ({ page },
     await page.addInitScript(() => {
       window.localStorage.setItem("token", "admin-token");
     });
-    await page.goto("/admin");
+    // Navigate to "/" first so auth loads before we hit the protected /admin route.
+    await page.goto("/");
+    await expect(page.getByText("admin@example.com")).toBeVisible();
+    await page.getByRole("link", { name: "Admin" }).click();
     await expect(page.getByRole("heading", { name: "Admin panel" })).toBeVisible();
   });
 

@@ -31,7 +31,10 @@ test("Admin approves a new seller account", async ({ page }, testInfo) => {
     await page.addInitScript(() => {
       window.localStorage.setItem("token", "admin-token");
     });
-    await page.goto("/admin");
+    // Navigate to "/" first so auth loads before we hit the protected /admin route.
+    await page.goto("/");
+    await expect(page.getByText("admin@example.com")).toBeVisible();
+    await page.getByRole("link", { name: "Admin" }).click();
     await expect(page.getByRole("heading", { name: "Admin panel" })).toBeVisible();
   });
 
@@ -48,7 +51,11 @@ test("Admin approves a new seller account", async ({ page }, testInfo) => {
   });
 
   await recorder.step(page, "Refresh or revisit the seller account information", async () => {
-    await page.reload();
+    // Simulate a refresh: navigate away and back via soft navigation to avoid auth race.
+    await page.goto("/");
+    await expect(page.getByText("admin@example.com")).toBeVisible();
+    await page.getByRole("link", { name: "Admin" }).click();
+    await expect(page.getByRole("heading", { name: "Admin panel" })).toBeVisible();
     const row = page.locator("tbody tr").filter({ hasText: "New Maker Studio" });
     await expect(row).toContainText("ACTIVE");
     await expect(row.getByRole("button", { name: "Suspend" })).toBeVisible();

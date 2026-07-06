@@ -38,7 +38,10 @@ test("Seller profile contains store name and bio", async ({ page }, testInfo) =>
     await page.addInitScript(() => {
       window.localStorage.setItem("token", "seller-token");
     });
-    await page.goto("/seller/dashboard");
+    // Navigate to "/" first so auth loads before hitting the protected seller dashboard.
+    await page.goto("/");
+    await expect(page.getByText("seller@example.com")).toBeVisible();
+    await page.getByRole("link", { name: "Seller Dashboard" }).click();
   });
 
   await recorder.step(page, "Locate the seller account profile information", async () => {
